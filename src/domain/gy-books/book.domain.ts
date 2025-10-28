@@ -11,6 +11,8 @@ export interface UserData{
     progress: number;
     startDate: string;
     endDate: string;
+    review: string;
+    editionId: string;
 }
 
 export enum EBookStatus{
