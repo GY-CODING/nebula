@@ -1,14 +1,34 @@
 pipeline {
-  agent any
+  /*
+    Jenkins pipeline for publishing the Nebula package.
+    - Uses the official node Docker image to guarantee npm/node availability.
+    - Authenticates with an NPM token stored in Jenkins credentials (FRONT_NPM_TOKEN).
+    - Runs tests only if a "test" script exists in package.json.
+    - Publishes only from the main branch.
+  */
+
+  agent {
+    docker { image 'node:20' }
+  }
 
   environment {
     NPM_TOKEN = credentials('FRONT_NPM_TOKEN')
   }
 
   stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
     stage('Install') {
       steps {
-        sh 'npm install'
+        sh '''
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+        '''
       }
     }
 
@@ -18,14 +38,33 @@ pipeline {
       }
     }
 
-    stage('Set up Auth') {
+    stage('Run tests (if present)') {
       steps {
-        sh "echo \"//registry.npmjs.org/:_authToken=${NPM_TOKEN}\" > ~/.npmrc"
+        script {
+          def hasTest = sh(returnStatus: true, script: "node -e \"try{const s=require('./package.json').scripts; process.exit(s && s.test ? 0 : 1)}catch(e){process.exit(1)}\"") == 0
+          if (hasTest) {
+            sh 'npm run test'
+          } else {
+            echo 'No test script found in package.json — skipping tests'
+          }
+        }
+      }
+    }
+
+    stage('Prepare NPM auth') {
+      steps {
+        // write token to ~/.npmrc for the duration of the job
+        sh 'printf "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n" > ~/.npmrc && chmod 600 ~/.npmrc'
       }
     }
 
     stage('Publish to NPM') {
+      when {
+        branch 'main'
+      }
       steps {
+        // Optional: uncomment to auto-bump patch version before publishing
+        // sh 'npm version patch -m "ci: bump version to %s [skip ci]" && git push --follow-tags origin main'
         sh 'npm publish --access public'
       }
     }
@@ -33,7 +72,8 @@ pipeline {
 
   post {
     always {
-      sh 'rm -f ~/.npmrc'
+      sh 'rm -f ~/.npmrc || true'
+      archiveArtifacts artifacts: 'dist/**', fingerprint: true
     }
   }
 }
