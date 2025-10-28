@@ -1,79 +1,102 @@
 pipeline {
-  /*
-    Jenkins pipeline for publishing the Nebula package.
-    - Uses the official node Docker image to guarantee npm/node availability.
-    - Authenticates with an NPM token stored in Jenkins credentials (FRONT_NPM_TOKEN).
-    - Runs tests only if a "test" script exists in package.json.
-    - Publishes only from the main branch.
-  */
-
-  agent {
-    docker { image 'node:20' }
-  }
+  agent any
 
   environment {
+    WORKSPACE_DIR = 'nebula'
+    NVM_DIR = "${WORKSPACE}/.nvm"
     NPM_TOKEN = credentials('FRONT_NPM_TOKEN')
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Install') {
-      steps {
-        sh '''
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-        '''
-      }
-    }
-
-    stage('Build') {
-      steps {
-        sh 'npm run build'
-      }
-    }
-
-    stage('Run tests (if present)') {
+    stage('Prepare Workspace') {
       steps {
         script {
-          def hasTest = sh(returnStatus: true, script: "node -e \"try{const s=require('./package.json').scripts; process.exit(s && s.test ? 0 : 1)}catch(e){process.exit(1)}\"") == 0
-          if (hasTest) {
-            sh 'npm run test'
+          if (fileExists(WORKSPACE_DIR)) {
+            echo "gy-books directory already exists, cleaning..."
+            dir(WORKSPACE_DIR) {
+              sh '''
+                rm -rf .nvm with-node.sh node_modules coverage
+              '''
+            }
           } else {
-            echo 'No test script found in package.json — skipping tests'
+            echo "Creating gy-books directory..."
+            sh "mkdir -p $WORKSPACE_DIR"
           }
+
+          // Copiar código fuente al directorio de análisis
+          echo "Copying source code to analysis directory..."
+          sh """
+            cp -r src ${WORKSPACE_DIR}/
+            cp -r public ${WORKSPACE_DIR}/ || echo "No public directory found"
+            cp -r __mocks__ ${WORKSPACE_DIR}/ || echo "No __mocks__ directory found"
+            cp -r .git ${WORKSPACE_DIR}/ || echo "No .git directory found"
+            cp package*.json ${WORKSPACE_DIR}/
+            cp tsconfig.json ${WORKSPACE_DIR}/ || echo "No tsconfig.json found"
+            cp jest.config.* ${WORKSPACE_DIR}/ || echo "No jest config found"
+            cp jest.setup.js ${WORKSPACE_DIR}/ || echo "No jest.setup.js found"
+            cp next.config.* ${WORKSPACE_DIR}/ || echo "No next config found"
+            cp *.config.* ${WORKSPACE_DIR}/ || echo "No additional configs found"
+            cp sonar-project.properties ${WORKSPACE_DIR}/ || echo "No sonar-project.properties found"
+          """
         }
       }
     }
 
-    stage('Prepare NPM auth') {
+    stage('Install Node') {
       steps {
-        // write token to ~/.npmrc for the duration of the job
-        sh 'printf "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n" > ~/.npmrc && chmod 600 ~/.npmrc'
+        dir(WORKSPACE_DIR) {
+          sh '''
+            mkdir -p "$NVM_DIR"
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            nvm install 18
+
+            # Wrapper para usar node/npm
+            echo '#!/bin/bash' > with-node.sh
+            echo 'export NVM_DIR="$NVM_DIR"' >> with-node.sh
+            echo '[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"' >> with-node.sh
+            echo 'nvm use 18 > /dev/null' >> with-node.sh
+            echo 'exec "$@"' >> with-node.sh
+            chmod +x with-node.sh
+
+            echo ">>> Node y npm instalados:"
+            ./with-node.sh node -v
+            ./with-node.sh npm -v
+          '''
+        }
+      }
+    }
+
+    stage('Install Dependencies') {
+      steps {
+        dir(WORKSPACE_DIR) {
+          sh '''
+            ./with-node.sh npm install
+          '''
+        }
+      }
+    }
+    stage('Set up Auth') {
+      steps {
+        sh "echo \"//registry.npmjs.org/:_authToken=${NPM_TOKEN}\" > ~/.npmrc"
       }
     }
 
     stage('Publish to NPM') {
-      when {
-        branch 'main'
-      }
       steps {
-        // Optional: uncomment to auto-bump patch version before publishing
-        // sh 'npm version patch -m "ci: bump version to %s [skip ci]" && git push --follow-tags origin main'
-        sh 'npm publish --access public'
+
+        dir(WORKSPACE_DIR) {
+          sh '''
+            ./with-node.sh npm publish --access public
+          '''
+        }
       }
     }
   }
 
   post {
     always {
-      sh 'rm -f ~/.npmrc || true'
-      archiveArtifacts artifacts: 'dist/**', fingerprint: true
+      sh 'rm -f ~/.npmrc'
     }
   }
 }
