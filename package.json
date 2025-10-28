@@ -1,6 +1,6 @@
 {
   "name": "@gycoding/nebula",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "🌌 Nebula — utilidades, hooks y clases reutilizables para proyectos React de GyCoding.",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
