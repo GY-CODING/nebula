@@ -76,6 +76,16 @@ pipeline {
         }
       }
     }
+     stage('Build Project') {
+      steps {
+        dir(WORKSPACE_DIR) {
+          sh '''
+            ./with-node.sh npm run build
+          '''
+        }
+      }
+    }
+    
     stage('Set up Auth') {
       steps {
         sh "echo \"//registry.npmjs.org/:_authToken=${NPM_TOKEN}\" > ~/.npmrc"
