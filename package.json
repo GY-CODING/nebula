@@ -24,6 +24,17 @@
   "author": "GYCODING",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GY-CODING/nebula.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GY-CODING/nebula/issues"
+  },
+  "homepage": "https://github.com/GY-CODING/nebula#readme",
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
