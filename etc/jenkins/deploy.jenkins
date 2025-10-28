@@ -1,0 +1,39 @@
+pipeline {
+  agent any
+
+  environment {
+    NPM_TOKEN = credentials('FRONT_NPM_TOKEN')
+  }
+
+  stages {
+    stage('Install') {
+      steps {
+        sh 'npm install'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'npm run build'
+      }
+    }
+
+    stage('Set up Auth') {
+      steps {
+        sh "echo \"//registry.npmjs.org/:_authToken=${NPM_TOKEN}\" > ~/.npmrc"
+      }
+    }
+
+    stage('Publish to NPM') {
+      steps {
+        sh 'npm publish --access public'
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'rm -f ~/.npmrc'
+    }
+  }
+}

@@ -14,7 +14,6 @@ export interface Profile {
     phoneNumber: string;
     picture: string;
     email: string;
-    isFriend: boolean;
     biography: string;
     hallOfFame: HallOfFame;
     activity: ActivityItem[];
